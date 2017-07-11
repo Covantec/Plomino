@@ -1039,12 +1039,24 @@ def getTemporaryDocument(db, form, REQUEST, doc=None, validation_mode=False):
     if hasattr(doc, 'real_id'):
         return doc
     else:
+        #TODO: find where _hidewhens[] is being set in request.
+        cache_key = "getTemporaryDocument_%s_%d_%d_%d" % (
+                form.id,
+                hash(frozenset(REQUEST.keys())), #HACK big assumption that we don't modify values
+                hash(doc),
+                validation_mode,
+            )
+        cache = db.getRequestCache(cache_key)
+        if cache:
+            return cache
+        #import pdb; pdb.set_trace()
         target = TemporaryDocument(
             db,
             form,
             REQUEST,
             real_doc=doc,
             validation_mode=validation_mode).__of__(db)
+        db.setRequestCache(cache_key, target)
         return target
 
 

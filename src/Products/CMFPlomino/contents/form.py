@@ -819,7 +819,7 @@ class PlominoForm(Container):
 
     @plomino_profiler('form')
     def displayDocument(self, doc, editmode=False, creation=False,
-            parent_form_id=False, request=None):
+            parent_form_id=False, request=None, temp_doc=None):
         """ Display the document using the form's layout
         """
         db = self.getParentDatabase()
@@ -833,14 +833,24 @@ class PlominoForm(Container):
             if form_mode and form_mode == 'WRITE':
                 editmode = True
 
-        if parent_form_id:
-            parent_form = db.getForm(parent_form_id)
+        if request:
+            parent_form_ids = db.getRequestCache('parent_form_ids')
+            if parent_form_ids is None:
+                parent_form_ids = []
+            if parent_form_id:
+                db.setRequestCache('parent_form_ids', parent_form_ids + [parent_form_id])
+        else:
+            parent_form_ids = []
+
+        if parent_form_ids:
+            parent_form = db.getForm(parent_form_ids[0])
             is_multi = parent_form.getIsMulti()
         else:
             is_multi = self.getIsMulti()
 
         # Use the request for the temp doc in editmode with a multipage form
         if request and editmode and request.get('form') and is_multi:
+            #TODO: why? need to work out test for this
             use_request = True
             # Use the parent form for the temp doc
             if parent_form_id:
@@ -848,8 +858,10 @@ class PlominoForm(Container):
         else:
             use_request = False
 
+        if temp_doc is not None:
+            hidewhen_target = temp_doc
         # remove the hidden content
-        if doc and use_request:
+        elif doc and use_request:
             hidewhen_target = getTemporaryDocument(
                 db,
                 tempdoc_form,
@@ -869,11 +881,6 @@ class PlominoForm(Container):
         html_content = self.applyHideWhen(hidewhen_target, silent_error=False, cache_key='displayDocument')
         hidden_fields, reset_fields = self._get_hidden_fields(request, hidewhen_target, validation_mode=False)
 
-        if request:
-            parent_form_ids = request.get('parent_form_ids', [])
-            if parent_form_id:
-                parent_form_ids.append(parent_form_id)
-                request.set('parent_form_ids', parent_form_ids)
 
         # get the field lists
         fields = self.getFormFields(doc=doc, request=request)
@@ -932,11 +939,12 @@ class PlominoForm(Container):
 
         # insert subforms
         for subformname in self.getSubforms(doc):
+            import pdb; pdb.set_trace()
             subform = self.getParentDatabase().getForm(subformname)
             if subform:
                 subformrendering = subform.displayDocument(
                     doc, editmode, creation, parent_form_id=self.id,
-                    request=request)
+                    request=request, temp_doc=hidewhen_target)
                 html_content = html_content.replace(
                     '<span class="plominoSubformClass">%s</span>' %
                     subformname,
@@ -2182,9 +2190,9 @@ class PlominoForm(Container):
             validation_mode=False,
             request=REQUEST)
 
-        hidden_fields,_ = self._get_hidden_fields(REQUEST, doc)
+        hidden_fields,_ = self._get_hidden_fields(REQUEST, tmp)
 
-        hidden_forms = self._get_hidden_subforms(REQUEST, doc)
+        hidden_forms = self._get_hidden_subforms(REQUEST, tmp)
         for form_id in hidden_forms:
             form = db.getForm(form_id)
             if form:
